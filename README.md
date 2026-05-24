@@ -45,3 +45,20 @@ AI: Would you like to confirm your appointment?
 User: Yes.
 
 AI: Great. Your appointment has been confirmed. Thank you.
+```
+
+# Teck Stack
+```bash
+
+| Layer               | Technology |
+| ------------------- | ---------- |
+| Backend Framework   | FastAPI    |
+| Telephony           | Twilio     |
+| Speech-to-Text      | Deepgram   |
+| LLM                 | Groq       |
+| LLM Orchestration   | LangChain  |
+| Text-to-Speech      | ElevenLabs |
+| Real-Time Streaming | WebSockets |
+| Tunneling           | Ngrok      |
+```
+
