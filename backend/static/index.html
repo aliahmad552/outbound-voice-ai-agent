@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Voice AI Agent</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 12px;
+            width: 400px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #38bdf8;
+            border: none;
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        button:hover {
+            background: #0ea5e9;
+        }
+
+        .status {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+    <h2>🎤 Voice AI Agent</h2>
+
+    <label>Phone Number</label>
+    <input type="text" id="phone" placeholder="+923001234567">
+
+    <label>Scenario</label>
+    <select id="scenario">
+        <option value="appointment">Appointment Reminder</option>
+        <option value="lead">Lead Qualification</option>
+        <option value="survey">Customer Survey</option>
+    </select>
+
+    <button onclick="makeCall()">📞 Start Call</button>
+
+    <div class="status" id="status"></div>
+</div>
+
+<script>
+async function makeCall() {
+    const phone = document.getElementById("phone").value;
+    const scenario = document.getElementById("scenario").value;
+
+    document.getElementById("status").innerText = "Calling...";
+
+    const res = await fetch("/make-call", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            phone_number: phone,
+            scenario: scenario
+        })
+    });
+
+    const data = await res.json();
+
+    document.getElementById("status").innerText =
+        "Call initiated: " + data.status;
+}
+</script>
+
+</body>
+</html>

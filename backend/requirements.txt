@@ -5,3 +5,7 @@ twilio
 websockets
 deepgram-sdk==3.5.0
 groq
+langchain
+langchain-core
+langchain-community
+langchain-groq

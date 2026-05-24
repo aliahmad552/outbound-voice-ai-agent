@@ -1,21 +1,45 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from twilio.rest import Client
+
 import os
 import json
 import base64
-from services.tts_service import TTSService
-
+import asyncio
 
 from services.deepgram_service import DeepgramService
-from services.groq_service import GroqService
+from services.llm_service import LLMService
 from core.prompts import SYSTEM_PROMPT
+
+# =========================================================
+# LOAD ENV
+# =========================================================
 
 load_dotenv()
 
+# =========================================================
+# FASTAPI
+# =========================================================
+
 app = FastAPI()
 
-# ---------------- TWILIO ----------------
+# =========================================================
+# STATIC FILES
+# =========================================================
+
+app.mount(
+    "/static",
+    StaticFiles(directory="backend/static"),
+    name="static"
+)
+
+# =========================================================
+# TWILIO CLIENT
+# =========================================================
+
 twilio_client = Client(
     os.getenv("TWILIO_ACCOUNT_SID"),
     os.getenv("TWILIO_AUTH_TOKEN")
@@ -23,74 +47,181 @@ twilio_client = Client(
 
 TWILIO_PHONE = os.getenv("TWILIO_PHONE_NUMBER")
 
-# ---------------- SERVICES ----------------
+# =========================================================
+# SERVICES
+# =========================================================
+
 deepgram = DeepgramService()
-groq = GroqService()
-tts = TTSService()
+llm_service = LLMService()
+
+# =========================================================
+# FRONTEND
+# =========================================================
 
 @app.get("/")
 def home():
-    return {"status": "Voice AI Running"}
+    return FileResponse("backend/static/index.html")
 
+# =========================================================
+# REQUEST MODEL
+# =========================================================
 
-# ---------------- WEB SOCKET ----------------
+class CallRequest(BaseModel):
+    phone_number: str
+    scenario: str
+
+# =========================================================
+# WEBSOCKET MEDIA STREAM
+# =========================================================
+
 @app.websocket("/media-stream")
 async def media_stream(websocket: WebSocket):
 
     await websocket.accept()
+
     print("WebSocket Connected")
 
+    # Conversation memory
     conversation = [
-        {"role": "system", "content": SYSTEM_PROMPT}
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        }
     ]
 
-    def handle_transcript(self, result, **kwargs):
-        text = result.channel.alternatives[0].transcript
+    # =====================================================
+    # HANDLE TRANSCRIPT
+    # =====================================================
 
-        if text:
-            print("USER:", text)
+    async def handle_transcript(self, result, **kwargs):
 
+        try:
+
+            text = result.channel.alternatives[0].transcript
+
+            # Ignore empty transcripts
+            if not text or not text.strip():
+                return
+
+            print(f"\nUSER: {text}")
+
+            # Add user message
             conversation.append({
                 "role": "user",
                 "content": text
             })
 
-            reply = groq.get_reply(conversation)
+            # =================================================
+            # LLM RESPONSE
+            # =================================================
 
-            print("AI:", reply)
+            reply = llm_service.get_reply(conversation)
 
+            print(f"\nAI: {reply}")
+
+            # Add AI reply to memory
             conversation.append({
                 "role": "assistant",
                 "content": reply
             })
 
-    deepgram.start(handle_transcript)
+        except Exception as e:
+            print("Transcript Error:", e)
 
-    while True:
-        data = await websocket.receive_text()
-        data = json.loads(data)
+    # =====================================================
+    # START DEEPGRAM
+    # =====================================================
 
-        if data["event"] == "media":
-            audio = base64.b64decode(data["media"]["payload"])
-            deepgram.send_audio(audio)
-
-
-# ---------------- CALL TRIGGER ----------------
-@app.get("/make-call")
-def make_call():
-
-    TWIML = """
-    <Response>
-        <Connect>
-            <Stream url="wss://subatomic-latticed-gallows.ngrok-free.dev/media-stream"/>
-        </Connect>
-    </Response>
-    """
-
-    call = twilio_client.calls.create(
-        to="+923078965638",
-        from_=TWILIO_PHONE,
-        twiml=TWIML
+    deepgram.start(
+        lambda *args, **kwargs:
+        asyncio.create_task(
+            handle_transcript(*args, **kwargs)
+        )
     )
 
-    return {"status": "calling", "call_sid": call.sid}
+    # =====================================================
+    # RECEIVE AUDIO FROM TWILIO
+    # =====================================================
+
+    try:
+
+        while True:
+
+            data = await websocket.receive_text()
+
+            data = json.loads(data)
+
+            event = data.get("event")
+
+            # ---------------------------------------------
+            # MEDIA EVENT
+            # ---------------------------------------------
+
+            if event == "media":
+
+                media_payload = data["media"]["payload"]
+
+                audio = base64.b64decode(media_payload)
+
+                deepgram.send_audio(audio)
+
+            # ---------------------------------------------
+            # CONNECTED EVENT
+            # ---------------------------------------------
+
+            elif event == "connected":
+                print("Twilio Connected")
+
+            # ---------------------------------------------
+            # START EVENT
+            # ---------------------------------------------
+
+            elif event == "start":
+                print("Streaming Started")
+
+            # ---------------------------------------------
+            # STOP EVENT
+            # ---------------------------------------------
+
+            elif event == "stop":
+                print("Streaming Stopped")
+                break
+
+    except Exception as e:
+        print("WebSocket Error:", e)
+
+# =========================================================
+# MAKE CALL
+# =========================================================
+
+@app.post("/make-call")
+def make_call(call_request: CallRequest):
+
+    try:
+
+        TWIML = """
+        <Response>
+            <Connect>
+                <Stream url="wss://YOUR_NGROK_URL/media-stream"/>
+            </Connect>
+        </Response>
+        """
+
+        call = twilio_client.calls.create(
+            to=call_request.phone_number,
+            from_=TWILIO_PHONE,
+            twiml=TWIML
+        )
+
+        return {
+            "status": "calling",
+            "scenario": call_request.scenario,
+            "call_sid": call.sid
+        }
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "message": str(e)
+        }
