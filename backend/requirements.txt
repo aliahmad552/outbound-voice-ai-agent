@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-dotenv
+twilio
+websockets
+deepgram-sdk==3.5.0
+groq
